@@ -4,7 +4,8 @@ const CopyWebpackPlugin = require('copy-webpack-plugin');
 module.exports = {
   entry: {
     background: './background.js',
-    'summarize.worker': './summarize.worker.js'
+    'model.worker': './model.worker.js',
+    options: './options.js'
   },
   output: {
     path: path.resolve(__dirname, 'dist'),
@@ -39,6 +40,7 @@ module.exports = {
         { from: 'content.js', to: '.' },
         { from: 'offscreen.html', to: '.' },
         { from: 'offscreen.js', to: '.' },
+        { from: 'options.html', to: '.' },
         // Copy WASM files needed by transformers.js
         {
           from: 'node_modules/@xenova/transformers/dist/*.wasm',

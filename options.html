@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Local Processor Options</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+      min-width: 400px;
+    }
+    label {
+      display: block;
+      margin-top: 15px;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    textarea {
+      width: 95%;
+      min-height: 60px;
+      margin-bottom: 10px;
+      padding: 5px;
+      border: 1px solid #ccc;
+    }
+    button {
+      padding: 8px 15px;
+      cursor: pointer;
+    }
+    .info {
+        font-size: 0.9em;
+        color: #555;
+        margin-bottom: 15px;
+    }
+    #status {
+        margin-top: 15px;
+        font-weight: bold;
+        color: green;
+    }
+  </style>
+</head>
+<body>
+  <h1>Local Processor Settings</h1>
+  <p class="info">
+    Configure the prompt templates used for processing text. Use <code>{text}</code> as a placeholder
+    where the selected text will be inserted.
+  </p>
+
+  <label for="summarizePrompt">Summarization Prompt Template:</label>
+  <p class="info">Used with DistilBART model. Use <code>{text}</code> as the placeholder for selected text.</p>
+  <textarea id="summarizePrompt"></textarea>
+
+  <label for="extractQaQuestion">Event Extraction Question:</label>
+  <p class="info">This question will be asked to the QA model (DistilBERT) using the selected text as context.</p>
+  <textarea id="extractQaQuestion"></textarea>
+
+  <button id="save">Save Settings</button>
+  <div id="status"></div>
+
+  <script src="options.js"></script>
+</body>
+</html> 

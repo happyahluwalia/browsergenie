@@ -1,6 +1,10 @@
 // background.js
 
 const OFFSCREEN_DOCUMENT_PATH = '/offscreen.html';
+const DEFAULT_SETTINGS = {
+    summarizePrompt: "summarize: {text}",
+    extractQaQuestion: "Is there an event in the text? If yes, give me details"
+};
 
 // --- Offscreen Document Management ---
 let creating;
@@ -21,7 +25,7 @@ async function setupOffscreenDocument(path) {
         creating = chrome.offscreen.createDocument({
             url: path,
             reasons: ['WORKERS'],
-            justification: 'Manages the T5 Web Worker'
+            justification: 'Manages the model Web Worker'
         });
         try {
             await creating;
@@ -61,7 +65,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             console.error(`Background: Could not send message to tab ${message.tabId}: ${error}`);
         });
     } else if (message.type === 'modelLoading') {
-        console.log("Background: T5 Model is loading...");
+        console.log(`Background: Model for task '${message.task || 'unknown'}' is loading...`);
     } else if (message.type === 'error') {
         console.error("Background: Received error from offscreen/worker:", message.error);
     }
@@ -71,38 +75,68 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.removeAll(() => {
       chrome.contextMenus.create({
         id: "summarizeSelectedText",
-        title: "Summarize (Local T5)", // Simplified title
+        title: "Summarize (Local DistilBART)",
         contexts: ["selection"]
       });
       chrome.contextMenus.create({
         id: "extractEventFromText",
-        title: "Extract Event Info (Local T5)",
+        title: "Ask about Events (Local QA)",
         contexts: ["selection"]
       });
       console.log("Background: Context menus created/updated.");
   });
+  // Also ensure default settings are set on install/update
+  chrome.storage.sync.get(DEFAULT_SETTINGS, (items) => {
+      // This will only write if items don't exist or if defaults changed
+      chrome.storage.sync.set(items);
+  });
   setupOffscreenDocument(OFFSCREEN_DOCUMENT_PATH);
 });
 
-chrome.contextMenus.onClicked.addListener((info, tab) => {
+// Handle context menu click - NOW fetches prompt template
+chrome.contextMenus.onClicked.addListener(async (info, tab) => { // Make listener async
   if (!tab || !tab.id || !info.selectionText) return;
 
   let taskType = null;
+  let settingKey = null;
+  let messagePayload = {};
+
   if (info.menuItemId === "summarizeSelectedText") {
       taskType = 'summarize';
+      settingKey = 'summarizePrompt';
+      messagePayload.promptKey = settingKey;
   } else if (info.menuItemId === "extractEventFromText") {
       taskType = 'extract_event';
+      settingKey = 'extractQaQuestion';
+      messagePayload.questionKey = settingKey;
   }
 
-  if (taskType) {
-    console.log(`Background: Requesting task '${taskType}'...`); // Simplified log
-    sendMessageToOffscreen({
-        type: 'processText',
-        target: 'offscreen',
-        task: taskType,
-        text: info.selectionText,
-        tabId: tab.id
-    });
+  if (taskType && settingKey) {
+    console.log(`Background: Requesting task '${taskType}'...`);
+
+    try {
+        // Fetch all settings (includes the one we need)
+        const items = await chrome.storage.sync.get(DEFAULT_SETTINGS);
+        const settingValue = items[settingKey];
+
+        if (messagePayload.promptKey) {
+            messagePayload.promptTemplate = settingValue;
+        } else if (messagePayload.questionKey) {
+            messagePayload.promptQuestion = settingValue;
+        }
+
+        // Send the message to the offscreen document
+        sendMessageToOffscreen({
+            type: 'processText',
+            target: 'offscreen',
+            task: taskType,
+            text: info.selectionText,
+            ...messagePayload,
+            tabId: tab.id
+        });
+    } catch (error) {
+        console.error("Background: Error fetching settings from storage:", error);
+    }
   }
 });
 

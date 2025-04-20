@@ -1,11 +1,13 @@
-// summarize.worker.js (Using T5 for multiple tasks via prompts)
+// summarize.worker.js (Using T5 for multiple tasks via prompts passed in message)
 console.log("T5 Worker: Script loaded.");
 
 import { pipeline, env } from '@xenova/transformers';
 
-// Configure environment - Skip local check, use WASM
+// Configure environment
 env.allowLocalModels = false;
 env.backends.onnx.wasm.numThreads = 1;
+
+// REMOVED storage loading logic and promptTemplates global variable
 
 // Pipeline instance holder
 class TextToTextPipeline {
@@ -14,6 +16,7 @@ class TextToTextPipeline {
     static instance = null;
 
     static async getInstance(progress_callback = null) {
+        // REMOVED prompt loading check here
         if (this.instance === null) {
             console.log("T5 Worker: Initializing pipeline...");
             self.postMessage({ type: 'modelLoading' });
@@ -25,41 +28,51 @@ class TextToTextPipeline {
             } catch (error) {
                 console.error("T5 Worker: Pipeline initialization FAILED:", error);
                 self.postMessage({ type: 'error', error: 'Failed to load T5 model: ' + error.message });
-                throw error; // Propagate error
+                throw error;
             }
-        } else {
-            // console.log("T5 Worker: Pipeline instance already exists."); // Can be noisy
-        }
+        } 
         return this.instance;
     }
 }
 
-// Listen for messages from the offscreen document
+// Listen for messages
 self.onmessage = async (event) => {
-    // console.log("T5 Worker: Received message:", event.data); // Keep log minimal
     const message = event.data;
 
-    if (message.type === 'processText' && message.text) {
+    // Expect the prompt template to be part of the message
+    if (message.type === 'processText' && message.text && message.promptTemplate) {
         const task = message.task || 'summarize';
         let inputText = message.text;
-        let generatedTextLabel = "Summary";
+        let generatedTextLabel = "Result"; // Default label
+        const template = message.promptTemplate; // Use the template passed in the message
 
-        // Prepend task-specific prefix
+        // Determine label based on task
         if (task === 'summarize') {
-            inputText = `summarize: ${message.text}`;
             generatedTextLabel = "Summary";
         } else if (task === 'extract_event') {
-            inputText = `extract event details: ${message.text}`;
             generatedTextLabel = "Extracted Event Info";
         } else {
-            // Fallback to summarize if task is unknown
-            inputText = `summarize: ${message.text}`;
-            generatedTextLabel = "Summary (defaulted)";
+             generatedTextLabel = `Result (${task})`;
+        }
+
+        // Construct input using the template
+        try {
+             // Basic safety check for the placeholder
+             if (template.includes("{text}")) {
+                inputText = template.replace("{text}", message.text);
+             } else {
+                console.warn("T5 Worker: Prompt template missing {text} placeholder. Using raw text instead.");
+                // If placeholder is missing, maybe just use raw text or prepend template?
+                // For now, let's just use raw text as a fallback.
+                inputText = message.text;
+             }
+        } catch (e) {
+             console.error("T5 Worker: Error formatting prompt template. Using raw text.", e);
+             inputText = message.text; // Fallback to raw text
         }
 
         try {
             const generator = await TextToTextPipeline.getInstance(/* progress_callback */);
-            // console.log(`T5 Worker: Starting generation for task '${task}'...`); // Keep log minimal
 
             const startTime = performance.now();
             const output = await generator(inputText, {
@@ -71,7 +84,6 @@ self.onmessage = async (event) => {
             const endTime = performance.now();
             const duration = (endTime - startTime).toFixed(2);
             console.log(`T5 Worker: Task '${task}' completed in ${duration} ms.`);
-            // console.log("T5 Worker: Raw Output:", output); // Raw output can be verbose
 
             const resultText = output[0]?.summary_text || output[0]?.generated_text || '[!] No text generated.';
 
@@ -94,8 +106,10 @@ self.onmessage = async (event) => {
             });
         }
     } else {
-        console.warn("T5 Worker: Received message with unknown type or missing text:", message);
+        console.warn("T5 Worker: Received message missing required fields (type=processText, text, promptTemplate):", message);
     }
 };
+
+// REMOVED initial prompt load call
 
 console.log("T5 Worker: Script ready and listening.");
